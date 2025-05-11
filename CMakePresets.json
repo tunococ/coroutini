@@ -1,0 +1,48 @@
+{
+  "version": 10,
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 0
+  },
+  "configurePresets": [
+    {
+      "name": "dev-base",
+      "generator": "Ninja",
+      "environment": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "dev-clang",
+      "inherits": [
+        "dev-base"
+      ],
+      "environment": {
+        "CC": "clang",
+        "CXX": "clang++"
+      }
+    },
+    {
+      "name": "dev-gcc",
+      "inherits": [
+        "dev-base"
+      ],
+      "environment": {
+        "CC": "gcc",
+        "CXX": "g++"
+      }
+    },
+    {
+      "name": "dev",
+      "inherits": [
+        "dev-clang"
+      ]
+    },
+    {
+      "name": "default",
+      "inherits": [
+        "dev"
+      ]
+    }
+  ]
+}

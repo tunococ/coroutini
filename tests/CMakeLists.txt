@@ -1,0 +1,11 @@
+add_executable(coroutini_test)
+target_sources(coroutini_test
+  PRIVATE
+    test.cpp
+)
+target_link_libraries(coroutini_test
+  PRIVATE
+    coroutini
+    Catch2::Catch2WithMain
+)
+catch_discover_tests(coroutini_test)
