@@ -138,4 +138,13 @@ TEST_CASE("Futures can be chained with then", "[future]") {
   CHECK(list == List{0, 1, 2, 3});
 }
 
-TEST_CASE("Exception can be caught with catch", "[future]") {}
+TEST_CASE("then can work with void", "[future]") {
+  std::vector<int> list;
+  auto a = lazy([&list]() { list.push_back(1); })
+               .then([&list]() { list.push_back(2); })
+               .then([&list]() { list.push_back(3); })
+               .then([&list]() { list.push_back(4); });
+  CHECK(list.empty());
+  a.get();
+  CHECK(list == std::vector{1, 2, 3, 4});
+}

@@ -67,7 +67,13 @@ struct Future {
   struct Awaiter {
     handle_type handle;
     bool await_ready() noexcept { return false; }
-    value_type await_resume() { return std::move(handle.promise().result); }
+    value_type await_resume() {
+      if constexpr (std::is_void_v<value_type>) {
+        return;
+      } else {
+        return std::move(handle.promise().result);
+      }
+    }
     std::coroutine_handle<> await_suspend(std::coroutine_handle<> caller) {
       promise_type& p = handle.promise();
       p.caller = caller;
@@ -159,6 +165,19 @@ struct Future {
   }
 
   template <class ThenFunc>
+    requires(std::is_void_v<value_type>)
+  Future<void> then(ThenFunc&& then_func) {
+    handle_type current_handle = handle_;
+    handle_ = nullptr;
+    return [](future_type current,
+              std::remove_reference_t<ThenFunc> then_func) -> Future<void> {
+      co_await current;
+      co_return then_func();
+    }(current_handle.promise(), std::forward<ThenFunc>(then_func));
+  }
+
+  template <class ThenFunc>
+    requires(!std::is_void_v<value_type>)
   Future<std::invoke_result_t<ThenFunc, value_type>> then(
       ThenFunc&& then_func) {
     using Result = std::invoke_result_t<ThenFunc, value_type>;
@@ -166,20 +185,6 @@ struct Future {
     handle_ = nullptr;
     return [](future_type current,
               std::remove_reference_t<ThenFunc> then_func) -> Future<Result> {
-      auto input = co_await current;
-      auto result = then_func(std::move(input));
-      co_return std::move(std::move(result));
-    }(current_handle.promise(), std::forward<ThenFunc>(then_func));
-  }
-
-  template <class ThenFunc>
-  Future<std::invoke_result_t<ThenFunc, value_type>, true> then_eager(
-      ThenFunc&& then_func) {
-    using Result = std::invoke_result_t<ThenFunc, value_type>;
-    handle_type current_handle = handle_;
-    handle_ = nullptr;
-    return [](future_type current, std::remove_reference_t<ThenFunc> then_func)
-               -> Future<Result, true> {
       co_return then_func(co_await current);
     }(current_handle.promise(), std::forward<ThenFunc>(then_func));
   }
