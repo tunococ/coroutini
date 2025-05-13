@@ -1,7 +1,9 @@
 export module coroutini;
 
+export import :future;
+
 export namespace coroutini {
 
-char const *say_hello() { return "Hello, world!"; }
+using namespace coroutini::future;
 
 };  // namespace coroutini

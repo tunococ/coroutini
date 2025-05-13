@@ -13,6 +13,7 @@ endif()
 add_subdirectory(lib)
 
 if(COROUTINI_DEV)
+  # Use Catch2 as the testing framework.
   include(FetchContent)
   FetchContent_Declare(
     Catch2
@@ -26,27 +27,20 @@ if(COROUTINI_DEV)
 
   add_subdirectory(tests)
 
+  # Target "format" will invoke clang-format.
   find_program(CLANG_FORMAT clang-format)
   if(CLANG_FORMAT)
     file(GLOB_RECURSE files_to_format
-      "lib/*.h"
-      "lib/*.hh"
-      "lib/*.hpp"
-      "lib/*.hxx"
-      "lib/*.c"
-      "lib/*.cc"
-      "lib/*.cpp"
-      "lib/*.cxx"
+      "lib/*.[ch]"
+      "lib/*.[ch]h"
+      "lib/*.[ch]pp"
+      "lib/*.[ch]xx"
       "lib/*.cppm"
       "lib/*.cxxm"
-      "tests/*.h"
-      "tests/*.hh"
-      "tests/*.hpp"
-      "tests/*.hxx"
-      "tests/*.c"
-      "tests/*.cc"
-      "tests/*.cpp"
-      "tests/*.cxx"
+      "tests/*.[ch]"
+      "tests/*.[ch]h"
+      "tests/*.[ch]pp"
+      "tests/*.[ch]xx"
       "tests/*.cppm"
       "tests/*.cxxm"
     )
@@ -60,5 +54,4 @@ if(COROUTINI_DEV)
   else()
     message(STATUS "clang-format not found. Skipping format target.")
   endif()
-
 endif()

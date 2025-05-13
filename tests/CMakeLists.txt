@@ -2,6 +2,7 @@ add_executable(coroutini_test)
 target_sources(coroutini_test
   PRIVATE
     test.cpp
+    future.cpp
 )
 target_link_libraries(coroutini_test
   PRIVATE
