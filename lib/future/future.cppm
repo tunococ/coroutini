@@ -6,9 +6,9 @@ module;
 #include <type_traits>
 #include <variant>
 
-export module coroutini:future;
+export module coroutini_future:future;
 
-export import :future_utils;
+import :utils;
 
 namespace coroutini::future {
 
