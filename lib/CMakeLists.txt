@@ -5,5 +5,6 @@ target_sources(coroutini
     main.cppm
     future/future.cppm
     future/utils.cppm
+    threadpool/threadpool.cppm
 )
 
