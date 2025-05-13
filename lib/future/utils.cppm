@@ -2,7 +2,7 @@ module;
 
 #include <tuple>
 
-export module coroutini:future_utils;
+export module coroutini_future:utils;
 
 namespace coroutini::future::utils {
 
