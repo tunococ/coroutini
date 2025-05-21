@@ -95,12 +95,8 @@ TEST_CASE("ThreadPool -- single thread", "[thread_pool]") {
     std::size_t num_tasks_finished = 0;
     condition_variable task_finished;
     auto task = [&]() {
-      // std::cout << std::format("trying to execute task...\n");
       std::scoped_lock lock{mutex};
       ++num_tasks_finished;
-      // std::cout << std::format(
-      //     "  task finished, num_tasks_finished={}, notifying...\n",
-      //     num_tasks_finished);
       task_finished.notify_one();
     };
     thread_pool.add_task(60s, task);
@@ -119,19 +115,11 @@ TEST_CASE("ThreadPool -- single thread", "[thread_pool]") {
     thread_pool.add_task(start_time + 5s, task);
     thread_pool.add_task(start_time + 5s, task);
     CHECK(thread_pool.get_num_pending_tasks() == 7);
-    // std::cout << std::format("about to add 10s\n");
     Clock::add_time(10s);
-    // std::cout << std::format("added 10s\n");
-    task_finished.wait(lock, [&]() {
-      // std::cout << std::format("expected num_tasks_finished=4, actual={}\n",
-      //                          num_tasks_finished);
-      return num_tasks_finished == 4;
-    });
-    // std::cout << std::format("Waiting done\n");
+    task_finished.wait(lock, [&]() { return num_tasks_finished == 4; });
 
     CHECK(thread_pool.get_num_pending_tasks() == 4);
 
-    // std::cout << std::format("about to add 35s\n");
     Clock::add_time(35s);
     task_finished.wait(lock, [&]() { return num_tasks_finished == 7; });
     CHECK(thread_pool.get_num_pending_tasks() == 1);
@@ -144,20 +132,9 @@ TEST_CASE("ThreadPool -- single thread", "[thread_pool]") {
       thread_pool.add_task(start_time + 50s, task);
       thread_pool.add_task(start_time + 10s, task);
     }
-    // std::cout << "About to wait for 1000 tasks\n";
-    task_finished.wait(lock, [&]() {
-      // std::cout << std::format("num_tasks_finished={}, expected 1000\n",
-      //                          num_tasks_finished);
-      return num_tasks_finished == 1000;
-    });
-    // std::cout << "About to add 5s\n";
+    task_finished.wait(lock, [&]() { return num_tasks_finished == 1000; });
     Clock::add_time(5s);
-    // std::cout << "About to wait for 1000 more tasks\n";
     task_finished.wait(lock, [&]() { return num_tasks_finished == 2000; });
-
-    thread_pool.block_new_tasks();
-    thread_pool.clear_pending_tasks();
-    // std::cout << std::format("Finishing up\n");
   };
 
   SECTION("add_periodic_task") {
@@ -183,8 +160,6 @@ TEST_CASE("ThreadPool -- single thread", "[thread_pool]") {
     task_finished.wait(lock, [&]() { return counters[1] == 2; });
     Clock::add_time(10s);
     task_finished.wait(lock, [&]() { return counters[0] == 2; });
-
-    // thread_pool.dump_tasks(time_point{});
 
     CHECK(thread_pool.get_num_pending_tasks() == 2);
 
@@ -415,16 +390,9 @@ TEST_CASE("ThreadPool - multiple threads", "[thread_pool]") {
       return [&, id]() {
         std::unique_lock lock{mutex};
         started.emplace(id);
-        // std::cout << std::format("inserted {}, size = {}\n", id,
-        //                          started.size());
         task_updated.notify_one();
         lock.unlock();
-        // std::cout << std::format(
-        //     "inserted {}, size = {}, arriving at barrier\n", id,
-        //     started.size());
         barrier.arrive_and_wait();
-        // std::cout << std::format("inserted {}, size = {}, leaving barrier\n",
-        //                          id, started.size());
         lock.lock();
         done.emplace(id);
         task_updated.notify_one();
@@ -433,14 +401,8 @@ TEST_CASE("ThreadPool - multiple threads", "[thread_pool]") {
 
     for (std::size_t i = 0; i < num_threads; ++i) {
       thread_pool.add_task(create_task(i));
-      // std::cout << std::format("*** Added task {}\n", i);
-      // thread_pool.dump_tasks(start_time);
     }
-    task_updated.wait(lock, [&]() {
-      // std::cout << std::format("Waiting...\n");
-      // thread_pool.dump_tasks(start_time);
-      return started.size() == num_threads;
-    });
+    task_updated.wait(lock, [&]() { return started.size() == num_threads; });
     CHECK(done.empty());
     lock.unlock();
     barrier.arrive_and_wait();

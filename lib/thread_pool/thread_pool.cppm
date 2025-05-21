@@ -86,29 +86,6 @@ struct ThreadPool {
   bool add_periodic_task(duration const& initial_delay, TaskFunc&& task_func,
                          duration period = duration(0));
 
-  void dump_tasks(time_point offset) {
-    std::scoped_lock lock{tasks_mutex_};
-    std::cout << "Dumping tasks\n";
-    for (auto i = tasks_.begin(); i != tasks_.end(); ++i) {
-      auto& task = *i;
-      std::cout << std::format("  scheduled_time: {} -- assigned={}\n",
-                               task.scheduled_time - offset,
-                               !unassigned_tasks_.contains(i));
-    }
-    std::cout << "Dumping threads\n";
-    for (auto& thread : threads_) {
-      auto& assigned_task = thread.assigned_task;
-      if (assigned_task) {
-        std::cout << std::format("  thread scheduled_time: {}\n",
-                                 (*assigned_task)->scheduled_time - offset);
-      } else if (thread.executing) {
-        std::cout << std::format("  thread scheduled_time: executing\n");
-      } else {
-        std::cout << std::format("  thread scheduled_time: N/A\n");
-      }
-    }
-  }
-
 protected:
   std::atomic_bool block_new_tasks_{false};
   condition_variable thread_update_;
@@ -349,10 +326,8 @@ void ThreadPool<Allocator, Clock, ConditionVariable>::clear_pending_tasks(
     bool wait_for_executing_tasks) {
   std::unique_lock lock{tasks_mutex_};
   if (wait_for_executing_tasks) {
-    // std::cout << std::format("Wait for executing tasks...\n");
     thread_update_.wait(
         lock, [this]() { return idle_threads_.size() == threads_.size(); });
-    // std::cout << std::format("Executing tasks finished...\n");
   }
   idle_threads_.clear();
   for (std::size_t i = 0; i < threads_.size(); ++i) {
@@ -397,21 +372,8 @@ void ThreadPool<Allocator, Clock, ConditionVariable>::thread_function_(
 
       // Execute the task.
       lock.unlock();
-      // std::cout << std::format("********* before executing task with time
-      // {}\n",
-      //                          task.scheduled_time - time_point{});
-      // thread_pool->dump_tasks(time_point{});
-      // std::cout << std::format("*********\n");
-
       task.task_function();
-
-      // std::cout << std::format("********* after executing\n");
-      // thread_pool->dump_tasks(time_point{});
-      // std::cout << std::format("*********\n");
-
       lock.lock();
-
-      // std::cout << std::format("task finished\n");
 
       thread.executing = false;
       thread_pool->idle_threads_.emplace(thread_index);
@@ -457,16 +419,9 @@ bool ThreadPool<Allocator, Clock, ConditionVariable>::add_task(
 
   // If there are no idle threads, the new task will be unassigned.
   if (idle_threads_.empty()) {
-    // std::cout << "--- add_task --- no idle threads to assign\n";
     unassigned_tasks_.emplace(task_ref);
     return true;
   }
-
-  // std::cout << std::format("--- add_task --- dumping {} idle threads\n",
-  //                          idle_threads_.size());
-  // for (auto const& idle_thread : idle_threads_) {
-  //   std::cout << std::format("  thread #{}\n", idle_thread);
-  // }
 
   // If there are free threads, we will check if the one with the latest
   // scheduled time should be reassigned to this new task.
@@ -480,16 +435,12 @@ bool ThreadPool<Allocator, Clock, ConditionVariable>::add_task(
   // If the new task is scheduled later than the scheduled wake-up time of the
   // thread, there will be no task assignment. The new task will be unassigned.
   if (!threads_(scheduled_time, thread_index_to_reassign)) {
-    // std::cout << std::format("--- add_task --- not reassigning thread {}\n",
-    //                          thread_index_to_reassign);
     // Note: threads_.operator() is a "less" function that works on both thread
     // indices and time points.
     unassigned_tasks_.emplace(task_ref);
     return true;
   }
 
-  // std::cout << std::format("--- add_task --- reassigning with thread {}\n",
-  //                          thread_index_to_reassign);
   // Otherwise, the new task will be assigned to the thread.
   Thread& thread_to_reassign = threads_[thread_index_to_reassign];
   auto& assigned_task = thread_to_reassign.assigned_task;
@@ -505,8 +456,6 @@ bool ThreadPool<Allocator, Clock, ConditionVariable>::add_task(
   task_ref->assigned_thread.emplace(thread_index_to_reassign);
 
   lock.unlock();
-  // std::cout << "--- add_task\n";
-  // dump_tasks(time_point());
 
   // Wake up the thread.
   thread_to_reassign.wake_up.notify_one();
@@ -534,13 +483,8 @@ bool ThreadPool<Allocator, Clock, ConditionVariable>::add_periodic_task(
     time_point const& scheduled_time, TaskFunc&& task_func, duration period) {
   return add_task(scheduled_time, [this, scheduled_time,
                                    task_func = std::move(task_func), period]() {
-    // std::cout << std::format("--- Trying to add next task with time {}\n",
-    //                          scheduled_time - time_point{});
     add_periodic_task(scheduled_time + period, task_func, period);
-    // std::cout << std::format("--- Next task added with time {}\n",
-    //                          scheduled_time - time_point{});
     task_func();
-    // std::cout << std::format("--- Execution done\n");
   });
 }
 
