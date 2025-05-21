@@ -1,6 +1,7 @@
 export module coroutini;
 
-export import :future;
+export import coroutini_future;
+export import coroutini_threadpool;
 
 export namespace coroutini {
 
