@@ -16,51 +16,158 @@ namespace coroutini::utils {
 constexpr static char const MANUAL_CLOCK_DEFAULT_NAME[] =
     "coroutini::utils::ManualClock";
 
+/**
+ * @brief Clock type whose time only moves when explicitly requested.
+ *
+ * The primary purpose of ManualClock is to facilitate testing of time-dependent
+ * code. By using ManualClock effectively, time-dependent code can be tested
+ * more deterministically, ensuring consistent results. Additionally, tests can
+ * complete faster, as ManualClock removes reliance on real-world time.
+ *
+ * Since a clock instance is represented as a class, different instances can
+ * only be created via different template parameters. The template parameters
+ * @p name and @p id are introduced for this purpose. (Dynamic creation of
+ * ManualClock instances is not possible.)
+ *
+ * @tparam Rep Arithmetic type representing the number of ticks in the clock's
+ * duration
+ *
+ * @tparam Period A
+ * [`std::ratio`](https://en.cppreference.com/w/cpp/numeric/ratio/ratio) type
+ * representing  the tick period of the clock, in seconds
+ *
+ * @tparam steady A `bool` value that indicates whether this clock is steady or
+ * not
+ *
+ * @tparam name A pointer value that represents one part of the clock's id
+ *
+ * @tparam id A number (`std::size_t`) that represents the other part of the
+ * clock's id
+ *
+ * ### General usage guidelines
+ *
+ * - Create a unique clock name as a `constexpr static char []` and use it as
+ * the @p name template parameter of ManualClock. The @p id template parameter
+ * can also be used to spawn multiple clock instances of the same name.
+ * - Create a _periodic broadcaster_ by calling the static function
+ * periodic_broadcaster() and store the return value in a scope that will last
+ * as long as the clock is needed.
+ * - Call set_time() and add_time() to change the clock time.
+ * - Use condition_variable and condition_variable_any from this class instead
+ * of `std::condition_variable` and `std::condition_variable_any`. These
+ * clock-specific condition variables will work with time_point and duration of
+ * this clock.
+ *
+ * ### Advanced usage
+ *
+ * The _periodic broadcaster_ is, technically, not necessary if you know when to
+ * call broadcast_change() manually to unblock waiting threads.
+ *
+ */
 export template <
     class Rep = std::chrono::steady_clock::rep,
     class Period = std::chrono::steady_clock::period, bool steady = false,
     char const* name = MANUAL_CLOCK_DEFAULT_NAME, std::size_t id = -1>
 struct ManualClock {
+  /**
+   * @brief Arithmetic type representing the number of ticks in the clock's
+   * duration.
+   */
   using rep = Rep;
+  /**
+   * @brief
+   * [`std::ratio`](https://en.cppreference.com/w/cpp/numeric/ratio/ratio) type
+   * representing  the tick period of the clock, in seconds.
+   */
   using period = Period;
   constexpr static bool is_steady = steady;
   constexpr static auto clock_name = name;
   constexpr static auto instance_id = id;
+  /// @brief Type of this class.
   using this_type =
       ManualClock<rep, period, is_steady, clock_name, instance_id>;
 
+  /// @brief Type of durations for this clock.
   using duration = std::chrono::duration<rep, period>;
+  /// @brief Type of time points for this clock.
   using time_point = std::chrono::time_point<this_type, duration>;
 
+  /**
+   * @brief Returns the current time of this clock.
+   *
+   * @return The current time of this clock.
+   */
   constexpr static time_point now() { return instance().get_time_(); }
 
+  /**
+   * @brief Sets the current time of this clock.
+   *
+   * @param time time_point to set the clock to.
+   * @return A reference to this clock.
+   */
   constexpr static ManualClock& set_time(time_point const& time) {
     return instance().set_time_(time);
   }
 
+  /**
+   * @brief Adds a time duration to the current time of the clock.
+   *
+   * @param d duration to add.
+   * @return A reference to this clock.
+   */
   template <class Duration>
   constexpr static ManualClock& add_time(Duration&& d) {
     return instance().add_time_(
         static_cast<duration>(std::forward<Duration>(d)));
   }
 
+  /**
+   * @brief Sets the clock time to the epoch time of this clock.
+   */
   constexpr static ManualClock& reset() { return set_time(time_point{}); }
 
+  /**
+   * @brief Notifies all the threads that are waiting on condition variables
+   * from this clock.
+   */
   constexpr static ManualClock& broadcast_change() {
     return instance().broadcast_change_();
   }
 
   /**
-   * A thread that periodically notifies all the condition variables that are
-   * waiting on this clock with `wait_for` or `wait_until`.
+   * @brief Creates a thread that periodically notify all the condition
+   * variables that are waiting on this clock with `wait_for` or `wait_until`.
    *
-   * This is necessary because the clock time may be changed around the same
-   * time that `wait_for` or `wait_until` is called, and the time-change
-   * notification may be missed by the wait call. (Note that although `wait_for`
-   * and `wait_until` will check the clock time before waiting on the condition
-   * variable, the wait operation does not follow the time check atomically. If
-   * the clock time changes between the time check and the wait operation, the
-   * wait operation will not receive the time change notification.)
+   * When a thread call `wait_for` or `wait_until`, it will do the following
+   * (written as pseudocode):
+   *
+   * ```
+   * while (clock_type::now() < expiration_time) {  // (1)
+   *   wait(...);                                   // (2)
+   * }
+   * ```
+   *
+   * The `wait(...)` part will unblock when the clock time is changed.
+   * However, if the clock time changes to a value higher than `expiration_time`
+   * after (1) but before (2), the `wait(...)` call may not receive the
+   * time-change notification and the thread will not unblock (until the next
+   * time change).
+   *
+   * A periodic broadcaster solves this problem by periodically sending a
+   * time-change notification regardless of any time changes.
+   * Note that this does not break any correctness of the wait operation as
+   * spurious wakeups are expected.
+   *
+   * @param start_time Time to start broadcasting notifications.
+   *
+   * @param period Period between two broadcasts.
+   *
+   * @return A
+   * [`std::jthread`](https://en.cppreference.com/w/cpp/thread/jthread) that
+   * periodically notifies all condition variables created from this clock.
+   *
+   * The caller should keep the returned thread object alive for as long as the
+   * periodic broadcast is needed.
    */
   static std::jthread periodic_broadcaster(
       std::chrono::steady_clock::time_point start_time,
@@ -78,11 +185,19 @@ struct ManualClock {
     }};
   }
 
+  /**
+   * @brief An overload of periodic_broadcaster() that assumes `start_time =
+   * now()`.
+   */
   static std::jthread periodic_broadcaster(
       std::chrono::steady_clock::duration period) {
     return periodic_broadcaster(std::chrono::steady_clock::now(), period);
   }
 
+  /**
+   * @brief An overload of periodic_broadcaster() that assumes `start_time =
+   * now() + delay`.
+   */
   static std::jthread periodic_broadcaster(
       std::chrono::steady_clock::duration delay,
       std::chrono::steady_clock::duration period) {
@@ -90,6 +205,15 @@ struct ManualClock {
                                 period);
   }
 
+  /**
+   * @brief An analog of
+   * [`std::condition_variable`](https://en.cppreference.com/w/cpp/thread/condition_variable)
+   * that works with this ManualClock.
+   *
+   * This class exposes and interface similar to `std::condition_variable`, but
+   * its wait_for() and wait_until() functions work on time types
+   * (\ref duration and time_point) of this clock.
+   */
   struct condition_variable {
     using clock = this_type;
     using this_type = condition_variable;
@@ -150,6 +274,15 @@ struct ManualClock {
     std::condition_variable base_cv_;
   };
 
+  /**
+   * @brief An analog of
+   * [`std::condition_variable_any`](https://en.cppreference.com/w/cpp/thread/condition_variable_any)
+   * that works with this ManualClock.
+   *
+   * This class exposes and interface similar to `std::condition_variable_any`,
+   * but its wait_for() and wait_until() functions work on time types
+   * (\ref duration and time_point) of this clock.
+   */
   struct condition_variable_any {
     using clock = this_type;
     using this_type = condition_variable_any;
@@ -252,6 +385,7 @@ protected:
   template <class Cv = std::condition_variable>
   using CvList = std::list<std::reference_wrapper<Cv>>;
 
+  /// @cond INTERNAL
   template <class Cv = std::condition_variable>
   struct CvHandle {
     using condition_variable = Cv;
@@ -262,6 +396,7 @@ protected:
     CvHandle(condition_variable& cv) : iterator{instance().register_cv(cv)} {}
     ~CvHandle() { instance().unregister_cv(*this); }
   };
+  /// @endcond
 
   CvList<std::condition_variable> base_cvs_;
   CvList<std::condition_variable_any> base_cv_anys_;
