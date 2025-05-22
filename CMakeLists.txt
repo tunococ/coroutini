@@ -54,4 +54,25 @@ if(COROUTINI_DEV)
   else()
     message(STATUS "clang-format not found. Skipping format target.")
   endif()
+
+  # Use Doxygen to generate documentation.
+  find_package(Doxygen)
+  if(DOXYGEN_FOUND)
+    file(GLOB_RECURSE files_to_document
+      "lib/*.[ch]"
+      "lib/*.[ch]h"
+      "lib/*.[ch]pp"
+      "lib/*.[ch]xx"
+      "lib/*.cppm"
+      "lib/*.cxxm"
+    )
+
+    doxygen_add_docs(docs
+      ${files_to_document}
+      CONFIG Doxyfile
+    )
+
+  endif()
+
 endif()
+

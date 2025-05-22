@@ -4,7 +4,6 @@ module;
 #include <chrono>
 #include <condition_variable>
 #include <functional>
-#include <iostream>
 #include <mutex>
 #include <set>
 #include <thread>
@@ -14,6 +13,39 @@ export module coroutini_threadpool;
 
 namespace coroutini::threadpool {
 
+/**
+ * @brief A class that holds a collection of threads and a task queue, and
+ * manages task execution among the threads.
+ *
+ * The main use of ThreadPool is to execute a task on a thread that belongs to
+ * this thread pool. The user of ThreadPool is expected to call add_task().
+ *
+ * Although add_task() is usually called by a thread that does not belong to the
+ * thread pool, it is possible to call it from the thread that belongs to the
+ * thread pool. This means it is possible to call add_task() inside the task. In
+ * fact, this is how add_periodic_task() works.
+ *
+ * ### Exception handling
+ *
+ * Each thread in the thread pool will suppress any exception raised by the task
+ * that it executes.
+ *
+ * ### Customizable clock type
+ *
+ * ThreadPool can work with any clock type (that satisfies the [TrivialClock
+ * requirements](https://en.cppreference.com/w/cpp/named_req/TrivialClock)) with
+ * a compatible condition variable type that exposes `wait`, `wait_until`, and
+ * `notify_one`.
+ * (See coroutini::utils::ManualClock for more details.)
+ *
+ * @tparam Allocator An allocator for internal data structures.
+ *
+ * @tparam Clock A clock that provides time. ThreadPool supports a clock type
+ * other than std::chrono::steady_clock provided that @p ConditionVariable works
+ * with it.
+ *
+ * @tparam ConditionVariable A `Clock`-compatible condition variable type.
+ */
 export template <class Allocator = std::allocator<std::byte>,
                  class Clock = std::chrono::steady_clock,
                  class ConditionVariable = std::condition_variable>
@@ -58,6 +90,12 @@ struct ThreadPool {
 
   void add_threads(std::size_t num_new_threads);
 
+  /**
+   * @brief Disallows (or allows) subsequent add_task() calls to add a task to
+   * the task queue.
+   *
+   * @param block Whether to block or unblock new tasks.
+   */
   void block_new_tasks(bool block = true) noexcept;
 
   void wait_for_pending_tasks(bool block_new_tasks = true);
@@ -66,6 +104,22 @@ struct ThreadPool {
 
   void unblock_new_tasks() noexcept { block_new_tasks(false); }
 
+  /**
+   * @brief Adds a task that will start executing after a scheduled time to the
+   * task queue.
+   *
+   * Note that if all the threads in the thread pool are busy when the clock
+   * time reaches @p scheduled_time, the task will not start executing until one
+   * thread in the thread pool becomes free.
+   *
+   * If block_new_tasks() has been called (with parameter `block = true`),
+   * add_task() will not add a task to the task queue and return `false`.
+   * Otherwise, add_task() will return `true`.
+   *
+   * @param scheduled_time The time to start executing the task.
+   * @param task The task to execute.
+   * @return Whether the task was added to the task queue or not.
+   */
   template <class TaskFunc>
   bool add_task(time_point const& scheduled_time, TaskFunc&& task_func);
 
@@ -75,16 +129,58 @@ struct ThreadPool {
   template <class TaskFunc>
   bool add_task(duration const& delay, TaskFunc&& task_func);
 
+  /**
+   * @brief Adds a task to the task queue periodically.
+   *
+   * This is a convenience function that will package a given @p task_func into
+   * a new task that will call @p task_func and add_periodic_task() with the
+   * same @p task_func, then add the packaged task to the task queue with
+   * add_task(). The return value of add_periodic_task() reflects the success of
+   * the addition of the first packaged task only.
+   *
+   * There are two operating modes of add_periodic_task() that can be chosen:
+   *
+   * - If `wait_for_task == true`, @p task_func will be executed before the
+   * add_periodic_task() call, and the next execution will be scheduled at
+   * `now() + period`.
+   *
+   * - If `wait_for_task == false`, add_periodic_task() will be called before
+   * @p task_func, and the next execution will be scheduled at `scheduled_time +
+   * period`.
+   *
+   * However, if `wait_for_task == false` and @p period is not
+   * strictly positive, the packaged task that calls add_periodic_task() before
+   * @p task_func may cause an unbounded number of tasks to be added even before
+   * the first execution of @p task_func. For this reason, add_periodic_task()
+   * will behave as if `wait_for_task == true` if @p period is not strictly
+   * positive.
+   *
+   * @param scheduled_time The starting time of the first execution.
+   *
+   * @param task_func The task to execute.
+   *
+   * @param period The period between the starting times of subsequent
+   * executions.
+   *
+   * @param wait_for_task If @p wait_for_task is `true`, add_periodic_task()
+   * will be called after @p task_func finishes executing. Otherwise, the order
+   * will be reversed.
+   *
+   * @return Whether the first task was added to the task queue or not.
+   */
   template <class TaskFunc>
   bool add_periodic_task(time_point const& scheduled_time, TaskFunc&& task_func,
-                         duration period = duration(0));
+                         duration period = duration(0),
+                         bool wait_for_task = false);
 
   template <class TaskFunc>
-  bool add_periodic_task(TaskFunc&& task_func, duration period = duration(0));
+  bool add_periodic_task(TaskFunc&& task_func, duration period = duration(0),
+                         bool wait_for_task = false);
 
   template <class TaskFunc>
   bool add_periodic_task(duration const& initial_delay, TaskFunc&& task_func,
-                         duration period = duration(0));
+                         duration period = duration(0),
+                         bool wait_for_task = false);
 
 protected:
   std::atomic_bool block_new_tasks_{false};
@@ -113,6 +209,10 @@ protected:
   mutable std::mutex tasks_mutex_;
 
   using TaskFunction = std::function<void()>;
+  /// @cond INTERNAL
+  /**
+   * @brief Data for a task.
+   */
   struct Task {
     TaskFunction task_function;
     time_point scheduled_time;
@@ -147,6 +247,9 @@ protected:
     constexpr Task& operator=(Task const&) = default;
   };
 
+  /**
+   * @brief Data for a thread in the thread pool.
+   */
   struct Thread {
     std::jthread thread;
     std::optional<TaskRef> assigned_task;
@@ -226,6 +329,7 @@ protected:
       return operator()(time, thread_scheduled_time(thread_index));
     }
   };
+  /// @endcond
 
   using IndexAllocator =
       std::allocator_traits<allocator_type>::template rebind_alloc<std::size_t>;
@@ -372,7 +476,10 @@ void ThreadPool<Allocator, Clock, ConditionVariable>::thread_function_(
 
       // Execute the task.
       lock.unlock();
-      task.task_function();
+      try {
+        task.task_function();
+      } catch (...) {
+      }
       lock.lock();
 
       thread.executing = false;
@@ -480,10 +587,24 @@ bool ThreadPool<Allocator, Clock, ConditionVariable>::add_task(
 template <class Allocator, class Clock, class ConditionVariable>
 template <class TaskFunc>
 bool ThreadPool<Allocator, Clock, ConditionVariable>::add_periodic_task(
-    time_point const& scheduled_time, TaskFunc&& task_func, duration period) {
-  return add_task(scheduled_time, [this, scheduled_time,
-                                   task_func = std::move(task_func), period]() {
-    add_periodic_task(scheduled_time + period, task_func, period);
+    time_point const& scheduled_time, TaskFunc&& task_func, duration period,
+    bool wait_for_task) {
+  if (period <= duration(0) && !wait_for_task) {
+    wait_for_task = true;
+    period = duration(0);
+  }
+  if (wait_for_task) {
+    return add_task(scheduled_time,
+                    [this, scheduled_time, task_func = std::move(task_func),
+                     period, wait_for_task]() {
+                      task_func();
+                      add_periodic_task(scheduled_time + period, task_func,
+                                        period, wait_for_task);
+                    });
+  }
+  return add_task(scheduled_time, [this, task_func = std::move(task_func),
+                                   period, wait_for_task]() {
+    add_periodic_task(period, task_func, period, wait_for_task);
     task_func();
   });
 }
@@ -491,17 +612,19 @@ bool ThreadPool<Allocator, Clock, ConditionVariable>::add_periodic_task(
 template <class Allocator, class Clock, class ConditionVariable>
 template <class TaskFunc>
 bool ThreadPool<Allocator, Clock, ConditionVariable>::add_periodic_task(
-    TaskFunc&& task_func, duration period) {
+    TaskFunc&& task_func, duration period, bool wait_for_task) {
   return add_periodic_task(clock_type::now(), std::forward<TaskFunc>(task_func),
-                           period);
+                           period, wait_for_task);
 }
 
 template <class Allocator, class Clock, class ConditionVariable>
 template <class TaskFunc>
 bool ThreadPool<Allocator, Clock, ConditionVariable>::add_periodic_task(
-    duration const& initial_delay, TaskFunc&& task_func, duration period) {
+    duration const& initial_delay, TaskFunc&& task_func, duration period,
+    bool wait_for_task) {
   return add_periodic_task(clock_type::now() + initial_delay,
-                           std::forward<TaskFunc>(task_func), period);
+                           std::forward<TaskFunc>(task_func), period,
+                           wait_for_task);
 }
 
 }  // namespace coroutini::threadpool
