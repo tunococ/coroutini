@@ -1,3 +1,7 @@
+if(COROUTINI_COVERAGE)
+  add_compile_options(--coverage)
+endif()
+
 add_library(coroutini)
 target_sources(coroutini
   PUBLIC FILE_SET coroutini TYPE CXX_MODULES

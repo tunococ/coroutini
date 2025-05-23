@@ -4,12 +4,15 @@
 #include <barrier>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <random>
 #include <thread>
+#include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 import coroutini_utils;
 import coroutini_threadpool;
@@ -408,6 +411,80 @@ TEST_CASE("ThreadPool - multiple threads", "[thread_pool]") {
     barrier.arrive_and_wait();
     lock.lock();
     task_updated.wait(lock, [&]() { return done == started; });
+  };
+
+  SECTION("add_periodic_task with wait_for_task") {
+    std::size_t state{0};
+    time_point wait_start_time{};
+    condition_variable pong;
+    condition_variable ping;
+
+    auto task = [&](duration patience) {
+      std::unique_lock lock{mutex};
+      ping.wait(lock, [&]() { return state == 0; });
+      wait_start_time = Clock::now();
+      std::cout << std::format("- setting state=1, wait_start_time={}\n",
+                               wait_start_time - start_time);
+      state = 1;
+      std::cout << std::format("- state=1, notifying\n");
+      pong.notify_one();
+      std::cout << std::format("- waiting for state=2\n");
+      if (ping.wait_until(lock, wait_start_time + patience,
+                          [&]() { return state == 2; })) {
+        std::cout << std::format("- setting state=3\n");
+        state = 3;
+      } else {
+        std::cout << std::format("- timeout: setting state=4\n");
+        state = 4;
+      }
+      std::cout << std::format("- notifying\n");
+      pong.notify_one();
+      std::cout << std::format("- done\n");
+    };
+
+    thread_pool.add_periodic_task(std::bind(task, 10s));
+    std::cout << std::format("waiting for state=1\n");
+    ping.notify_one();
+    pong.wait(lock, [&]() { return state == 1; });
+
+    std::cout << std::format("state=1, move clock up 9s\n");
+    wait_and_step_until<Clock>(lock, pong, wait_start_time + 9s,
+                               [&]() { return false; });
+    CHECK(state == 1);
+
+    std::cout << std::format("setting state=2\n");
+    state = 2;
+    std::cout << std::format("state=2, notifying\n");
+    ping.notify_one();
+    std::cout << std::format("waiting for state=3\n");
+    pong.wait(lock, [&]() { return state == 3; });
+    std::cout << std::format("state=3, done\n");
+
+    state = 0;
+    ping.notify_one();
+    pong.wait(lock, [&]() { return state == 1; });
+
+    wait_and_step<Clock>(lock, pong, [&]() { return state == 4; });
+    CHECK(state == 4);
+    CHECK(Clock::now() >= wait_start_time + 10s);
+
+    // Cleaning up includes blocking new tasks AND finishing executing tasks.
+    thread_pool.block_new_tasks();
+    thread_pool.clear_pending_tasks(false);
+    wait_and_step<Clock>(lock, pong, [&]() {
+      std::size_t num_tasks = thread_pool.get_num_tasks();
+      if (thread_pool.get_num_tasks() == 0) {
+        return true;
+      }
+      if (state == 1) {
+        state = 2;
+        ping.notify_one();
+      } else if (state == 3 || state == 4) {
+        state = 0;
+        ping.notify_one();
+      }
+      return false;
+    });
   };
 }
 
