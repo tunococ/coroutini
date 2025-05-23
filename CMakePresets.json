@@ -9,7 +9,8 @@
       "name": "dev-base",
       "generator": "Ninja",
       "environment": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "COROUTINI_COVERAGE": "ON"
       }
     },
     {

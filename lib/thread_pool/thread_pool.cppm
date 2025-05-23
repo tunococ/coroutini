@@ -5,6 +5,7 @@ module;
 #include <condition_variable>
 #include <functional>
 #include <mutex>
+#include <numeric>
 #include <set>
 #include <thread>
 #include <vector>
@@ -65,7 +66,7 @@ struct ThreadPool {
   ThreadPool operator=(ThreadPool const&) = delete;
 
   /**
-   * Creates a `ThreadPool`.
+   * @brief Creates a ThreadPool.
    *
    * @param num_threads The number of threads.
    * @param allocator An allocator.
@@ -74,19 +75,53 @@ struct ThreadPool {
              allocator_type const& allocator = allocator_type());
 
   /**
-   * Creates a `ThreadPool` with the leading-allocator convention.
+   * @brief An overload of ThreadPool() that supports the leading-allocator
+   * convention.
    */
   constexpr ThreadPool(std::allocator_arg_t, allocator_type const& allocator,
                        std::size_t num_threads = 1)
       : ThreadPool{num_threads, allocator} {}
 
+  /**
+   * @brief Destroys the ThreadPool.
+   *
+   * When the destructor is called, it
+   * - calls block_new_tasks();
+   * - sends a _stop request_ to all the threads in the pool; then
+   * - waits for the threads to exit.
+   *
+   * When a thread receives the stop request, it will
+   * - finish the task it is currently executing, if any; then
+   * - exit.
+   *
+   * Consequently, ~ThreadPool() will block until all the executing tasks are
+   * completed. All the pending tasks that have not begun executing will be
+   * lost.
+   */
   ~ThreadPool();
 
+  /**
+   * @brief Returns the number of threads that this thread pool manages.
+   */
   std::size_t get_num_threads() const;
 
+  /**
+   * @brief Returns the number of tasks that have been added but have not
+   * started executing.
+   */
   std::size_t get_num_pending_tasks() const;
 
+  /**
+   * @brief Returns the number of tasks that are executing.
+   */
   std::size_t get_num_executing_tasks() const;
+
+  /**
+   * @brief Returns the number of tasks that have not finished executing.
+   * This is similar to `get_num_threads() + get_num_pending_tasks()`, but the
+   * sum is atomic.
+   */
+  std::size_t get_num_tasks() const;
 
   void add_threads(std::size_t num_new_threads);
 
@@ -98,11 +133,18 @@ struct ThreadPool {
    */
   void block_new_tasks(bool block = true) noexcept;
 
-  void wait_for_pending_tasks(bool block_new_tasks = true);
-
-  void clear_pending_tasks(bool wait_for_executing_tasks = true);
-
+  /**
+   * @brief Calls \ref block_new_tasks "block_new_tasks"(false).
+   */
   void unblock_new_tasks() noexcept { block_new_tasks(false); }
+
+  /**
+   * @brief Removes all tasks that have not started executing.
+   *
+   * @param wait_for_executing_tasks Whether this function will wait for
+   * executing tasks to finish before removing all the pending tasks or not.
+   */
+  void clear_pending_tasks(bool wait_for_executing_tasks = true);
 
   /**
    * @brief Adds a task that will start executing after a scheduled time to the
@@ -123,9 +165,17 @@ struct ThreadPool {
   template <class TaskFunc>
   bool add_task(time_point const& scheduled_time, TaskFunc&& task_func);
 
+  /**
+   * @brief An overload of add_task() that operates as if `scheduled_time =
+   * clock_type::now()`.
+   */
   template <class TaskFunc>
   bool add_task(TaskFunc&& task_func);
 
+  /**
+   * @brief An overload of add_task() that operates as if `scheduled_time =
+   * clock_type::now() + delay`.
+   */
   template <class TaskFunc>
   bool add_task(duration const& delay, TaskFunc&& task_func);
 
@@ -162,7 +212,7 @@ struct ThreadPool {
    * @param period The period between the starting times of subsequent
    * executions.
    *
-   * @param wait_for_task If @p wait_for_task is `true`, add_periodic_task()
+   * @param wait_for_task If `wait_for_task == true`, add_periodic_task()
    * will be called after @p task_func finishes executing. Otherwise, the order
    * will be reversed.
    *
@@ -173,10 +223,18 @@ struct ThreadPool {
                          duration period = duration(0),
                          bool wait_for_task = false);
 
+  /**
+   * @brief An overload of add_periodic_task() that operates as if
+   * `scheduled_time = clock_type::now()`.
+   */
   template <class TaskFunc>
   bool add_periodic_task(TaskFunc&& task_func, duration period = duration(0),
                          bool wait_for_task = false);
 
+  /**
+   * @brief An overload of add_periodic_task() that operates as if
+   * `scheduled_time = clock_type::now() + initial_delay`.
+   */
   template <class TaskFunc>
   bool add_periodic_task(duration const& initial_delay, TaskFunc&& task_func,
                          duration period = duration(0),
@@ -369,11 +427,16 @@ ThreadPool<Allocator, Clock, ConditionVariable>::ThreadPool(
 
 template <class Allocator, class Clock, class ConditionVariable>
 ThreadPool<Allocator, Clock, ConditionVariable>::~ThreadPool() {
-  std::scoped_lock lock{tasks_mutex_};
-  block_new_tasks();
+  {
+    std::scoped_lock lock{tasks_mutex_};
+    block_new_tasks();
+    for (Thread& thread : threads_) {
+      thread.thread.request_stop();
+    }
+  }
   for (Thread& thread : threads_) {
-    thread.thread.request_stop();
     thread.wake_up.notify_one();
+    thread.thread.join();
   }
 }
 
@@ -395,7 +458,21 @@ template <class Allocator, class Clock, class ConditionVariable>
 std::size_t ThreadPool<Allocator, Clock,
                        ConditionVariable>::get_num_executing_tasks() const {
   std::scoped_lock lock{tasks_mutex_};
-  return threads_.size() - idle_threads_.size();
+  return std::accumulate(threads_.begin(), threads_.end(), 0,
+                         [](std::size_t acc, Thread const& thread) {
+                           return acc + (thread.executing ? 1 : 0);
+                         });
+}
+
+template <class Allocator, class Clock, class ConditionVariable>
+std::size_t ThreadPool<Allocator, Clock, ConditionVariable>::get_num_tasks()
+    const {
+  std::scoped_lock lock{tasks_mutex_};
+  return std::accumulate(threads_.begin(), threads_.end(), 0,
+                         [](std::size_t acc, Thread const& thread) {
+                           return acc + (thread.executing ? 1 : 0);
+                         }) +
+         tasks_.size();
 }
 
 template <class Allocator, class Clock, class ConditionVariable>
@@ -416,16 +493,6 @@ void ThreadPool<Allocator, Clock, ConditionVariable>::block_new_tasks(
 }
 
 template <class Allocator, class Clock, class ConditionVariable>
-void ThreadPool<Allocator, Clock, ConditionVariable>::wait_for_pending_tasks(
-    bool block_new_tasks) {
-  block_new_tasks_.store(block_new_tasks, std::memory_order_relaxed);
-  std::unique_lock lock{tasks_mutex_};
-  thread_update_.wait(lock, [this]() {
-    return tasks_.empty() && (idle_threads_.size() == threads_.size());
-  });
-}
-
-template <class Allocator, class Clock, class ConditionVariable>
 void ThreadPool<Allocator, Clock, ConditionVariable>::clear_pending_tasks(
     bool wait_for_executing_tasks) {
   std::unique_lock lock{tasks_mutex_};
@@ -437,7 +504,7 @@ void ThreadPool<Allocator, Clock, ConditionVariable>::clear_pending_tasks(
   for (std::size_t i = 0; i < threads_.size(); ++i) {
     Thread& thread = threads_[i];
     thread.assigned_task.reset();
-    if (!thread.executing) {
+    if (!thread.executing && !thread.thread.get_stop_token().stop_requested()) {
       idle_threads_.emplace(i);
     }
   }
@@ -509,6 +576,12 @@ void ThreadPool<Allocator, Clock, ConditionVariable>::thread_function_(
     task_ref->assigned_thread.emplace(thread_index);
     // thread_pool->idle_threads_.emplace(thread_index);
     // thread_pool->thread_update_.notify_one();
+  }
+  if (assigned_task) {
+    thread_pool->idle_threads_.erase(thread_index);
+    (*assigned_task)->assigned_thread.reset();
+    thread_pool->unassigned_tasks_.emplace(*assigned_task);
+    assigned_task.reset();
   }
 }
 
@@ -594,19 +667,20 @@ bool ThreadPool<Allocator, Clock, ConditionVariable>::add_periodic_task(
     period = duration(0);
   }
   if (wait_for_task) {
-    return add_task(scheduled_time,
-                    [this, scheduled_time, task_func = std::move(task_func),
-                     period, wait_for_task]() {
-                      task_func();
-                      add_periodic_task(scheduled_time + period, task_func,
-                                        period, wait_for_task);
-                    });
+    return add_task(scheduled_time, [this, task_func = std::move(task_func),
+                                     period, wait_for_task]() {
+      task_func();
+      add_periodic_task(clock_type::now() + period, task_func, period,
+                        wait_for_task);
+    });
   }
-  return add_task(scheduled_time, [this, task_func = std::move(task_func),
-                                   period, wait_for_task]() {
-    add_periodic_task(period, task_func, period, wait_for_task);
-    task_func();
-  });
+  return add_task(scheduled_time,
+                  [this, scheduled_time, task_func = std::move(task_func),
+                   period, wait_for_task]() {
+                    add_periodic_task(scheduled_time + period, task_func,
+                                      period, wait_for_task);
+                    task_func();
+                  });
 }
 
 template <class Allocator, class Clock, class ConditionVariable>

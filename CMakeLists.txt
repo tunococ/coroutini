@@ -71,7 +71,6 @@ if(COROUTINI_DEV)
       ${files_to_document}
       CONFIG Doxyfile
     )
-
   endif()
 
 endif()
