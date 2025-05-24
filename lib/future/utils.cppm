@@ -9,7 +9,7 @@ namespace coroutini::future::utils {
 export template <class P>
 struct MemberFunctionTraits;
 
-export template <class Class, class Return, class... Args>
+template <class Class, class Return, class... Args>
 struct MemberFunctionTraits<Return (Class::*)(Args...)> {
   using class_type = Class;
   using return_type = Return;

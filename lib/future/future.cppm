@@ -2,6 +2,8 @@ module;
 
 #include <coroutine>
 #include <exception>
+#include <format>
+#include <iostream>
 #include <optional>
 #include <type_traits>
 #include <variant>
@@ -100,7 +102,9 @@ struct Future {
   }
 
   std::add_lvalue_reference_t<value_type> get() {
+    std::cout << std::format("waiting\n");
     wait();
+    std::cout << std::format("done\n");
     if (auto exception = handle_.promise().exception; exception) {
       std::rethrow_exception(exception);
     }
@@ -127,7 +131,7 @@ struct Future {
       std::rethrow_exception(exception);
     }
     if constexpr (std::is_void_v<value_type>) {
-      return;
+      return {};
     } else {
       return promise.result;
     }
