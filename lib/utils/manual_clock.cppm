@@ -13,7 +13,7 @@ import :defer;
 
 namespace coroutini::utils {
 
-constexpr static char const MANUAL_CLOCK_DEFAULT_NAME[] =
+export constexpr char const MANUAL_CLOCK_DEFAULT_NAME[] =
     "coroutini::utils::ManualClock";
 
 /**
@@ -215,7 +215,8 @@ struct ManualClock {
    * (\ref duration and time_point) of this clock.
    */
   struct condition_variable {
-    using clock = this_type;
+    using clock_type =
+        ManualClock<rep, period, is_steady, clock_name, instance_id>;
     using this_type = condition_variable;
 
     condition_variable() {}
@@ -232,7 +233,7 @@ struct ManualClock {
     template <class Clock, class Duration>
     std::cv_status wait_until(
         std::unique_lock<std::mutex>& lock,
-        const std::chrono::time_point<Clock, Duration>& abs_time) {
+        std::chrono::time_point<Clock, Duration> abs_time) {
       CvHandle<std::condition_variable> cv_handle{base_cv_};
       if (now() >= abs_time) {
         return std::cv_status::timeout;
@@ -246,7 +247,7 @@ struct ManualClock {
 
     template <class Clock, class Duration, class Predicate>
     bool wait_until(std::unique_lock<std::mutex>& lock,
-                    const std::chrono::time_point<Clock, Duration>& abs_time,
+                    std::chrono::time_point<Clock, Duration> abs_time,
                     Predicate pred) {
       while (!pred()) {
         if (wait_until(lock, abs_time) == std::cv_status::timeout) {
@@ -284,7 +285,8 @@ struct ManualClock {
    * (\ref duration and time_point) of this clock.
    */
   struct condition_variable_any {
-    using clock = this_type;
+    using clock_type =
+        ManualClock<rep, period, is_steady, clock_name, instance_id>;
     using this_type = condition_variable_any;
 
     condition_variable_any() {}
@@ -311,7 +313,7 @@ struct ManualClock {
     template <class Lock, class Clock, class Duration>
 
     std::cv_status wait_until(
-        Lock& lock, const std::chrono::time_point<Clock, Duration>& abs_time) {
+        Lock& lock, std::chrono::time_point<Clock, Duration> abs_time) {
       CvHandle<std::condition_variable_any> cv_handle{base_cv_};
       if (now() >= abs_time) {
         return std::cv_status::timeout;
@@ -325,7 +327,7 @@ struct ManualClock {
 
     template <class Lock, class Clock, class Duration, class Predicate>
     bool wait_until(Lock& lock,
-                    const std::chrono::time_point<Clock, Duration>& abs_time,
+                    std::chrono::time_point<Clock, Duration> abs_time,
                     Predicate pred) {
       while (!pred()) {
         if (wait_until(lock, abs_time) == std::cv_status::timeout) {
@@ -337,7 +339,7 @@ struct ManualClock {
 
     template <class Lock, class Clock, class Duration, class Predicate>
     bool wait_until(Lock& lock, std::stop_token stoken,
-                    const std::chrono::time_point<Clock, Duration>& abs_time,
+                    std::chrono::time_point<Clock, Duration> abs_time,
                     Predicate pred) {
       while (!stoken.stop_requested()) {
         if (pred()) return true;
@@ -379,7 +381,7 @@ protected:
     return clock;
   }
 
-  time_point now_;
+  time_point now_{};
   std::mutex mutex_;
 
   template <class Cv = std::condition_variable>
@@ -458,8 +460,9 @@ protected:
   }
 };
 
-constexpr static char const DEFAULT_MANUAL_CLOCK_NAME[] =
+export constexpr char const DEFAULT_MANUAL_CLOCK_NAME[] =
     "coroutini::utils::DefaultManualClock";
+
 export template <std::size_t id = -1,
                  char const* name = DEFAULT_MANUAL_CLOCK_NAME,
                  bool steady = false>

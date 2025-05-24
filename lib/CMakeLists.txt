@@ -1,5 +1,6 @@
 if(COROUTINI_COVERAGE)
-  add_compile_options(--coverage)
+  add_compile_options(--coverage -O0)
+  add_link_options(--coverage)
 endif()
 
 add_library(coroutini)

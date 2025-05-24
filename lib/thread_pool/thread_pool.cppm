@@ -497,8 +497,11 @@ void ThreadPool<Allocator, Clock, ConditionVariable>::clear_pending_tasks(
     bool wait_for_executing_tasks) {
   std::unique_lock lock{tasks_mutex_};
   if (wait_for_executing_tasks) {
-    thread_update_.wait(
-        lock, [this]() { return idle_threads_.size() == threads_.size(); });
+    thread_update_.wait(lock, [this]() {
+      return std::all_of(
+          threads_.begin(), threads_.end(),
+          [](Thread const& thread) { return !thread.executing; });
+    });
   }
   idle_threads_.clear();
   for (std::size_t i = 0; i < threads_.size(); ++i) {
@@ -533,13 +536,13 @@ void ThreadPool<Allocator, Clock, ConditionVariable>::thread_function_(
       // At this point, the scheduled time has passed, so we start executing the
       // task.
 
+      // Report that this thread is not idle now.
+      thread_pool->idle_threads_.erase(thread_index);
+      thread.executing = true;
       // Move assigned_task out of tasks_.
       Task task = std::move(**assigned_task);
       thread_pool->tasks_.erase(*assigned_task);
-      // Report that this thread is not idle now.
-      thread_pool->idle_threads_.erase(thread_index);
       assigned_task.reset();
-      thread.executing = true;
 
       // Execute the task.
       lock.unlock();
@@ -559,8 +562,6 @@ void ThreadPool<Allocator, Clock, ConditionVariable>::thread_function_(
     // If there are no unassigned tasks, we declare that this thread is idle,
     // and wait for a task assignment from add_task.
     if (thread_pool->unassigned_tasks_.empty()) {
-      //      thread_pool->idle_threads_.emplace(thread_index);
-      //      thread_pool->thread_update_.notify_one();
       while (!assigned_task && !stop_token.stop_requested()) {
         thread.wake_up.wait(lock);
       }
@@ -574,8 +575,6 @@ void ThreadPool<Allocator, Clock, ConditionVariable>::thread_function_(
     thread_pool->unassigned_tasks_.erase(first_unassigned_task);
     assigned_task.emplace(task_ref);
     task_ref->assigned_thread.emplace(thread_index);
-    // thread_pool->idle_threads_.emplace(thread_index);
-    // thread_pool->thread_update_.notify_one();
   }
   if (assigned_task) {
     thread_pool->idle_threads_.erase(thread_index);

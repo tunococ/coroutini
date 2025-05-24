@@ -19,11 +19,11 @@ TEST_CASE("Future can defer computation", "[future]") {
 
   Future<int> a = lazy(appendAndReturn(3));
   Future<int> b = lazy(appendAndReturn(5));
-  auto c = [&]() -> Future<int> {
+  auto c = [](auto& a, auto& b, auto& appendAndReturn) -> Future<int> {
     int v1 = co_await a;
     int v2 = co_await b;
     co_return appendAndReturn(v1 + v2)();
-  }();
+  }(a, b, appendAndReturn);
 
   values.push_back(1);
   CHECK(*c == 8);
@@ -31,8 +31,8 @@ TEST_CASE("Future can defer computation", "[future]") {
 }
 
 TEST_CASE("Future can hold an exception", "[future]") {
-  auto throwIfZero = [&](int value) {
-    return lazy([&]() {
+  auto throwIfZero = [](int value) {
+    return lazy([value]() {
       if (!value) {
         throw 1;
       }
@@ -84,11 +84,11 @@ TEST_CASE("co_await can be called from a void Future", "[future]") {
     });
   };
 
-  auto task = [&]() -> Future<void> {
+  auto task = [](auto& appendAndReturn) -> Future<void> {
     int a = co_await appendAndReturn(100);
     int b = co_await appendAndReturn(200);
     co_await appendAndReturn(a + b);
-  }();
+  }(appendAndReturn);
 
   CHECK(values.empty());
   task.wait();
