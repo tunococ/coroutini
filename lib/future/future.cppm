@@ -127,7 +127,7 @@ struct Future {
       std::rethrow_exception(exception);
     }
     if constexpr (std::is_void_v<value_type>) {
-      return;
+      return {};
     } else {
       return promise.result;
     }

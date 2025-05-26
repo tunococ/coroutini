@@ -10,7 +10,6 @@
 #include <mutex>
 #include <random>
 #include <thread>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -423,42 +422,28 @@ TEST_CASE("ThreadPool - multiple threads", "[thread_pool]") {
       std::unique_lock lock{mutex};
       ping.wait(lock, [&]() { return state == 0; });
       wait_start_time = Clock::now();
-      std::cout << std::format("- setting state=1, wait_start_time={}\n",
-                               wait_start_time - start_time);
       state = 1;
-      std::cout << std::format("- state=1, notifying\n");
       pong.notify_one();
-      std::cout << std::format("- waiting for state=2\n");
       if (ping.wait_until(lock, wait_start_time + patience,
                           [&]() { return state == 2; })) {
-        std::cout << std::format("- setting state=3\n");
         state = 3;
       } else {
-        std::cout << std::format("- timeout: setting state=4\n");
         state = 4;
       }
-      std::cout << std::format("- notifying\n");
       pong.notify_one();
-      std::cout << std::format("- done\n");
     };
 
     thread_pool.add_periodic_task(std::bind(task, 10s));
-    std::cout << std::format("waiting for state=1\n");
     ping.notify_one();
     pong.wait(lock, [&]() { return state == 1; });
 
-    std::cout << std::format("state=1, move clock up 9s\n");
     wait_and_step_until<Clock>(lock, pong, wait_start_time + 9s,
                                [&]() { return false; });
     CHECK(state == 1);
 
-    std::cout << std::format("setting state=2\n");
     state = 2;
-    std::cout << std::format("state=2, notifying\n");
     ping.notify_one();
-    std::cout << std::format("waiting for state=3\n");
     pong.wait(lock, [&]() { return state == 3; });
-    std::cout << std::format("state=3, done\n");
 
     state = 0;
     ping.notify_one();

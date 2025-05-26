@@ -7,10 +7,14 @@
   "configurePresets": [
     {
       "name": "dev-base",
+      "binaryDir": "build",
       "generator": "Ninja",
+      "cacheVariables": {
+        "COROUTINI_COVERAGE": "ON",
+        "COROUTINI_DEV": "ON"
+      },
       "environment": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "COROUTINI_COVERAGE": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
     {
@@ -43,6 +47,90 @@
       "name": "default",
       "inherits": [
         "dev"
+      ]
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev-base",
+      "configurePreset": "dev-base"
+    },
+    {
+      "name": "dev-clang",
+      "configurePreset": "dev-clang"
+    },
+    {
+      "name": "dev-gcc",
+      "configurePreset": "dev-gcc"
+    },
+    {
+      "name": "lcov-gcc",
+      "inherits": "dev-gcc",
+      "targets": [
+        "lcov"
+      ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev-base",
+      "configurePreset": "dev-base"
+    },
+    {
+      "name": "dev-clang",
+      "configurePreset": "dev-clang"
+    },
+    {
+      "name": "dev-gcc",
+      "configurePreset": "dev-gcc"
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "dev-clang",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "dev-clang"
+        },
+        {
+          "type": "build",
+          "name": "dev-clang"
+        },
+        {
+          "type": "test",
+          "name": "dev-clang"
+        }
+      ]
+    },
+    {
+      "name": "dev-gcc",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "dev-gcc"
+        },
+        {
+          "type": "build",
+          "name": "dev-gcc"
+        },
+        {
+          "type": "test",
+          "name": "dev-gcc"
+        }
+      ]
+    },
+    {
+      "name": "lcov-gcc",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "dev-gcc"
+        },
+        {
+          "type": "build",
+          "name": "lcov-gcc"
+        }
       ]
     }
   ]
