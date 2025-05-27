@@ -28,7 +28,7 @@ if(COROUTINI_COVERAGE)
       COMMAND genhtml coverage.info
         --ignore-errors mismatch,source
         --synthesize-missing
-        -o coverage_html
+        -o lcov_html
       WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
       COMMENT "Generating lcov code coverage report..."
       DEPENDS tests/CMakeFiles/coroutini_test.dir/blank.cpp.gcda
@@ -39,11 +39,16 @@ if(COROUTINI_COVERAGE)
   if(NOT GCOVR)
     message(WARNING "gcovr not found. gcovr reports will not be generated.")
   else()
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/gcovr_html)
     add_custom_target(gcovr
       COMMAND ${GCOVR} -r . -e "build"
         --cobertura-pretty
         --cobertura
         build/coverage.xml
+      COMMAND ${GCOVR} -r . -e "build"
+        --html
+        --html-details
+        build/gcovr_html/index.html
       COMMAND ${GCOVR} -r . -e "build" --txt
       WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
       COMMENT "Generating gcovr code coverage report..."
