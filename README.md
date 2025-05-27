@@ -103,30 +103,46 @@ Our test code is made with Catch2, so please consult [their documentation](
 https://github.com/catchorg/Catch2/blob/devel/docs/command-line.md#top)
 for information on command-line arguments.
 
-#### Code coverage summary from `ctest`
+#### Code coverage information
 
-Prerequisites:
+Currently, code coverage information is only available when GCC is used.
 
-- You must have lcov installed on your system.
+_TODO: Add support for Clang with `llvm-cov`._
 
-- You must use GCC as the compiler.
+There are 3 different ways to see code coverage information:
 
-The following `ctest` command can produce the code coverage summary:
+- With `ctest -T Coverage`
 
-```shell
-ctest -T Coverage
-```
+  After you have run the test, you can run
 
-This must be executed after the test code was run.
+  ```shell
+  ctest -T Coverage
+  ```
 
-Alternatively, you can build the `lcov` target to get the coverage information
-with
+  to produce a quick summary of code coverage.
 
-```shell
-cmake --build . --target=lcov
-```
+- With `lcov`
 
-This will build the code, run the test, and create an HTML report in the
-directory [`build/coverage_html`](build/coverage_html).
-The entry point is [`index.html`](build/coverage_html/index.html) in that
-directory.
+  If you have `lcov` installed, you can build the `lcov` target:
+
+  ```shell
+  cmake --build . --target=lcov
+  ```
+
+  This will generate [`build/lcov_html/index.html`](
+  build/coverage_html/index.html), which can be opened on a browser.
+
+- With `gcovr`
+
+  If you have `gcovr` installed, you can build the `gcovr` target:
+
+  ```shell
+  cmake --build . --target=gcovr
+  ```
+
+  This will generate [`build/coverage.xml`](build/coverage.xml) in a Cobertura
+  XML format, as well as [`build/gcovr_html/index.html`](
+  build/gcovr_html/index.html), which can be viewed on a browser.
+
+Note: If you install `lcov` (`gcovr`) _after_ configuring CMake, you will have
+to reconfigure CMake to make the `lcov` (`gcovr`) target available.
