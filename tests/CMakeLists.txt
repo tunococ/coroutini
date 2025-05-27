@@ -13,7 +13,7 @@ if(COROUTINI_COVERAGE)
 
   find_program(LCOV lcov)
   if(NOT LCOV)
-    message(WARNING "lcov not found. Please install it first.")
+    message(WARNING "lcov not found. lcov reports will not be generated.")
   else()
     add_custom_target(lcov
       COMMAND ${LCOV} -c -d .
@@ -28,10 +28,23 @@ if(COROUTINI_COVERAGE)
       COMMAND genhtml coverage.info
         -o coverage_html
       WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-      COMMENT "Generating code coverage report..."
+      COMMENT "Generating lcov code coverage report..."
       DEPENDS tests/CMakeFiles/coroutini_test.dir/blank.cpp.gcda
     )
   endif()
+
+  find_program(GCOVR gcovr)
+  if(NOT GCOVR)
+    message(WARNING "gcovr not found. gcovr reports will not be generated.")
+  else()
+    add_custom_target(gcovr
+      COMMAND ${GCOVR} -r . -e "build" --txt
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+      COMMENT "Generating gcovr code coverage report..."
+      DEPENDS tests/CMakeFiles/coroutini_test.dir/blank.cpp.gcda
+    )
+  endif()
+
 endif()
 
 add_executable(coroutini_test)
