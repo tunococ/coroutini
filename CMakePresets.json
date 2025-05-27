@@ -64,6 +64,13 @@
       "configurePreset": "dev-gcc"
     },
     {
+      "name": "gcovr-gcc",
+      "inherits": "dev-gcc",
+      "targets": [
+        "gcovr"
+      ]
+    },
+    {
       "name": "lcov-gcc",
       "inherits": "dev-gcc",
       "targets": [
@@ -117,6 +124,19 @@
         {
           "type": "test",
           "name": "dev-gcc"
+        }
+      ]
+    },
+    {
+      "name": "gcovr-gcc",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "dev-gcc"
+        },
+        {
+          "type": "build",
+          "name": "gcovr-gcc"
         }
       ]
     },

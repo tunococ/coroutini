@@ -17,15 +17,17 @@ if(COROUTINI_COVERAGE)
   else()
     add_custom_target(lcov
       COMMAND ${LCOV} -c -d .
-        --ignore-errors inconsistent,negative
+        --ignore-errors inconsistent,mismatch,negative
         -o coverage.info
       COMMAND ${LCOV} -r coverage.info '/usr/*'
-        --ignore-errors inconsistent
+        --ignore-errors inconsistent,mismatch
         -o coverage.info
       COMMAND ${LCOV} -r coverage.info 'build/_deps/*'
-        --ignore-errors inconsistent
+        --ignore-errors inconsistent,mismatch
         -o coverage.info
       COMMAND genhtml coverage.info
+        --ignore-errors mismatch,source
+        --synthesize-missing
         -o coverage_html
       WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
       COMMENT "Generating lcov code coverage report..."
@@ -38,6 +40,10 @@ if(COROUTINI_COVERAGE)
     message(WARNING "gcovr not found. gcovr reports will not be generated.")
   else()
     add_custom_target(gcovr
+      COMMAND ${GCOVR} -r . -e "build"
+        --cobertura-pretty
+        --cobertura
+        build/coverage.xml
       COMMAND ${GCOVR} -r . -e "build" --txt
       WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
       COMMENT "Generating gcovr code coverage report..."
