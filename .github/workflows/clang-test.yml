@@ -1,4 +1,4 @@
-name: Build with Clang and run tests
+name: Clang build and test
 
 on:
   pull_request:

@@ -1,0 +1,44 @@
+name: GCC 14 build, test, and lcov
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ ninja-build
+
+      - name: Install GCC 14
+        run: |
+          sudo add-apt-repository universe
+          sudo apt update
+          sudo apt install gcc-14 g++-14
+
+      - name: Set GCC 14 as the default
+        run: |
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+          sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-14 100
+          sudo update-alternatives --config gcc
+          sudo update-alternatives --config g++
+          sudo update-alternatives --config gcov
+
+      - name: Check the version of gcc and gcov
+        run: |
+          gcc --version
+          gcov --version
+
+      - name: Set up lcov
+        run: |
+          sudo apt install lcov
+          lcov --version
+
+      - name: Run the lcov workflow
+        run: cmake --workflow --preset lcov-gcc
