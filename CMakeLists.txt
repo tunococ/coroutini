@@ -44,7 +44,6 @@ if(COROUTINI_DEV)
       "tests/*.cppm"
       "tests/*.cxxm"
     )
-    message("files to format: ${files_to_format}")
     add_custom_target(
       format
       COMMAND ${CLANG_FORMAT} -i --style=file ${files_to_format}
